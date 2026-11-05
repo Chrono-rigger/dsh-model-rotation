@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "model-auto-switch",
+    "description": "Ordered multi-model rotation with automatic failover on rate-limit or repeated timeouts, a timed-out retest round, and DSH platform fallback."
+  }
+}

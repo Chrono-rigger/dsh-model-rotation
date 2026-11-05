@@ -1,0 +1,5 @@
+# Bundle patch: register the auto-switch host plugin in the root composition.
+- insert:
+  - id: model-auto-switch
+    name: 'dsh-model-rotation'
+    config: {}

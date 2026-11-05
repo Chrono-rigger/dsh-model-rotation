@@ -1,0 +1,61 @@
+{
+  "name": "dsh-model-rotation",
+  "description": "Custom ordered model rotation with automatic failover on rate-limit or repeated timeouts, timed-out retest round, and DSH platform fallback",
+  "version": "0.3.0",
+  "type": "module",
+  "main": "lib/index.js",
+  "license": "MIT",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "model-rotation",
+    "failover",
+    "model-selection"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Chrono-rigger/dsh-model-rotation.git"
+  },
+  "homepage": "https://github.com/Chrono-rigger/dsh-model-rotation#readme",
+  "bugs": {
+    "url": "https://github.com/Chrono-rigger/dsh-model-rotation/issues"
+  },
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "lib/index.js",
+    "client.js",
+    "locale/*.json",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-tools": "*",
+    "@deepseek-ai/schemastery": "*"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/cordis": { "optional": true },
+    "@deepseek-ai/dsh-tools": { "optional": true },
+    "@deepseek-ai/schemastery": { "optional": true }
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-plugin-manager"
+      ]
+    }
+  }
+}
