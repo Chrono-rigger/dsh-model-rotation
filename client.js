@@ -127,6 +127,13 @@ window.__ModuleLoader__.load({
         visionCanSee: '视觉模型（能读图的，例如带 VL / Vision / 4o 等标记）：开启后可以直接把截图、图表、界面图发给它，让它读图作答。',
         visionCannotSee: '纯文本模型（只处理文字的）：开启或不开启都一样，模型本身没有视觉能力，图片会被忽略或直接被拒绝，选识图变体不会让它「看懂图」。',
         visionAdvice: '建议：日常纯文字任务用不带识图的那一条，上下文与费用更省；需要看截图、认图时，把同一平台的识图变体单独加一条排在后面，或临时切过去。不要把识图变体当成「更强」的模型重复塞进同一个组合。',
+        visionInlineWarn: '组合里含「自动识图」成员：这类路线每次请求都会把会话历史里的图片全部内联（base64）发给上游，图片多的长会话可能直接报「Invalid string length」而失败。建议成员一律用不带识图的版本，识图交给识图插件按需分发。',
+        visionWarnTitle: '识图成员提醒',
+        pillTour: '自动组合',
+        pillRetest: '重测中',
+        pillFallback: '平台兜底',
+        pillIndex: '第 {n} 个',
+        pillHint: '当前这一轮实际在用的模型',
       },
       en: {
         'meta.title': 'Model Auto-Switch',
@@ -225,6 +232,13 @@ window.__ModuleLoader__.load({
         visionCanSee: 'Vision-capable models (marked VL / Vision / 4o etc.): with the vision variant enabled you can send screenshots, charts and UI images and the model can read them.',
         visionCannotSee: 'Text-only models: enabling the vision variant changes nothing — the model has no visual capability, so images are ignored or rejected. A vision variant does not make a text model see.',
         visionAdvice: 'Recommendation: use the plain (non-vision) entry for everyday text work to save context and cost; add the vision twin as a separate later member, or switch to it temporarily, only when you need to send images. Do not stack both twins as if one were "stronger".',
+        visionInlineWarn: 'The combo contains a vision member: this route inlines EVERY image in the session history (base64) into each request, and image-heavy long sessions can die with "Invalid string length". Prefer plain members in combos and let a vision plugin dispatch images on demand.',
+        visionWarnTitle: 'Vision member warning',
+        pillTour: 'Auto combo',
+        pillRetest: 'Retesting',
+        pillFallback: 'Platform fallback',
+        pillIndex: 'member {n}',
+        pillHint: 'The model this turn is actually using',
       },
     }
 
@@ -266,6 +280,8 @@ window.__ModuleLoader__.load({
 .mas-toggle input{width:15px;height:15px;accent-color:var(--mas-accent);cursor:pointer}
 .mas-foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .mas-note{color:var(--dsw-alias-label-secondary);font-size:11px}
+.mas-vision-warn{color:var(--dsw-alias-state-warning,#b45309);font-size:11px;margin-top:6px;line-height:1.5}
+.mas-combo.vision-warn{border-color:var(--dsw-alias-state-warning,#b45309)}
 .mas-err{color:var(--dsw-alias-state-error-primary,var(--color-red-500));font-size:11.5px;overflow-wrap:anywhere}
 .mas-ok{color:var(--dsw-alias-state-success-primary,var(--color-green-500));font-size:11.5px}
 .mas-combos{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(300px,100%),1fr));gap:10px;min-width:0}
@@ -304,6 +320,14 @@ window.__ModuleLoader__.load({
 .mas-v{min-width:0;overflow-wrap:anywhere}
 .mas-log{margin:6px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:2px}
 .mas-log li{font-size:10.5px;line-height:1.5;color:var(--dsw-alias-label-secondary);overflow-wrap:anywhere;font-family:var(--ds-font-family-code,ui-monospace,Menlo,monospace)}
+.mas-pill{display:inline-flex;align-items:center;gap:6px;max-width:100%;min-width:0;padding:2px 2px 0;font-size:11px;line-height:1.4;color:var(--dsw-alias-label-secondary)}
+.mas-pill-dot{width:6px;height:6px;border-radius:50%;flex:none;background:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-secondary))}
+.mas-pill-dot-round1,.mas-pill-dot-retest{background:var(--mas-accent,var(--color-blue-500,#3b82f6))}
+.mas-pill-dot-fallback{background:var(--dsw-alias-state-success,#22c55e)}
+.mas-pill-phase{flex:none;color:var(--dsw-alias-label-secondary)}
+.mas-pill-index{flex:none;color:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-secondary))}
+.mas-pill-model{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary);font-family:var(--ds-font-family-code,ui-monospace,Menlo,monospace);font-size:10.5px}
+.mas-pill-dead{flex:none;color:var(--dsw-alias-state-error,#ef4444);font-size:10px}
 `
 
     /* ── transport ─────────────────────────────────────────────────────── */
@@ -324,6 +348,52 @@ window.__ModuleLoader__.load({
       const group = (groups ?? []).find(g => g.provider === provider)
       const found = group ? (group.models ?? []).find(m => m.model === model) : undefined
       return found?.name ?? model
+    }
+
+    /* ── ambient pill: the model this session is really using ─────────── */
+    /**
+     * A combo member is never the wire model the composer names: the picker
+     * holds the combo, while every attempt goes to whichever member the tour
+     * is on. The host state machine already records that per agent and `agent`
+     * there is the session id, so the pill filters by the session it was
+     * registered for and shows the live route.
+     *
+     * It renders NOTHING unless the session is actually engaged with a combo.
+     * A permanent badge on an ordinary session would be noise, and a chip that
+     * outlived the tour would claim a model the next turn is not using.
+     */
+    function CurrentModelPill({ t, sessionId }) {
+      const [row, setRow] = useState(undefined)
+      useEffect(() => {
+        let alive = true
+        const read = async () => {
+          try {
+            const payload = await call('/state')
+            if (!alive || payload?.ok !== true) return
+            const needle = String(sessionId ?? '')
+            setRow((payload.agents ?? []).find(a => String(a.agent) === needle))
+          } catch { /* a poll miss must never break the composer */ }
+        }
+        void read()
+        const timer = setInterval(read, 4000)
+        return () => { alive = false; clearInterval(timer) }
+      }, [sessionId])
+      if (!row || row.engaged !== true) return null
+      const phase = row.phase === 'retest' ? t('pillRetest')
+        : row.phase === 'fallback' ? t('pillFallback')
+          : t('pillTour')
+      const active = row.active ? String(row.active) : ''
+      const rotation = Array.isArray(row.rotation) ? row.rotation : []
+      const index = active === '' ? 0 : rotation.indexOf(active) + 1
+      const dead = Array.isArray(row.dead) ? row.dead.length : 0
+      return h('div', { className: 'mas-pill', title: t('pillHint') },
+        h('span', { className: `mas-pill-dot mas-pill-dot-${String(row.phase ?? 'idle')}` }),
+        h('span', { className: 'mas-pill-phase' }, phase),
+        index > 0
+          ? h('span', { className: 'mas-pill-index' }, t('pillIndex').replace('{n}', `${index}/${rotation.length}`))
+          : null,
+        h('span', { className: 'mas-pill-model' }, active || t('noActive')),
+        dead > 0 ? h('span', { className: 'mas-pill-dead' }, `${t('dead')} ${dead}`) : null)
     }
 
     /* ── the page ──────────────────────────────────────────────────────── */
@@ -622,7 +692,12 @@ window.__ModuleLoader__.load({
             : t('phaseIdle')
 
       /* ── one saved combo card ── */
-      const comboCard = combo => h('div', { className: 'mas-combo', key: combo.id },
+      const comboCard = combo => h('div', {
+        className: (combo.rotation ?? []).some(r => /-vision$/i.test(String(r.provider ?? '')))
+          ? 'mas-combo vision-warn'
+          : 'mas-combo',
+        key: combo.id,
+      },
         h('div', { className: 'mas-card-head' },
           h('span', { className: 'mas-combo-name' }, combo.name !== '' ? combo.name : t('unnamed')),
           combo.active ? h('span', { className: 'mas-chip mas-chip-on' }, t('activeBadge')) : null,
@@ -690,6 +765,9 @@ window.__ModuleLoader__.load({
                     disabled: index === draft.length - 1, onClick: () => move(index, 1),
                   }, '↓'),
                   h('button', { className: 'mas-btn', type: 'button', onClick: () => removeAt(index) }, t('remove')))))),
+        draft.some(r => /-vision$/i.test(String(r.provider ?? '')))
+          ? h('p', { className: 'mas-note mas-vision-warn' }, `⚠ ${t('visionWarnTitle')}: ${t('visionInlineWarn')}`)
+          : null,
         h('div', { className: 'mas-foot' },
           h('span', { className: 'mas-label' }, t('threshold')),
           h('input', {
@@ -973,12 +1051,29 @@ window.__ModuleLoader__.load({
       }, props => (props && props.view === 'summary')
         ? t('subtitle')
         : h(Page, { ...props, t, locale: localeTag(ctx) })))
+
+      // Ambient pill under the composer: which member the tour is on right now.
+      // A free list seat, so it sits beside the shipped pills instead of
+      // replacing any of them; `inject` hands us the session id the row is for,
+      // and the component renders nothing while that session is not engaged.
+      try {
+        ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register({
+          name: 'conversation.composer.dock',
+          id: 'model-auto-switch-current',
+          order: 40,
+          locale: NS,
+          inject: sessionId => ({ t, sessionId }),
+        }, CurrentModelPill))
+      } catch (cause) {
+        // A slot failure must never take the host provider down with it.
+        console.error('[model-auto-switch] composer pill failed to register:', cause)
+      }
     }
 
     exports.inject = inject
     exports.apply = apply
     exports.name = 'model-auto-switch'
-    exports.__test = { DICT, Page, call }
+    exports.__test = { DICT, Page, call, CurrentModelPill }
     return module.exports
   },
 })
