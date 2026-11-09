@@ -1,7 +1,7 @@
 {
   "name": "dsh-model-rotation",
   "description": "Custom ordered model rotation with automatic failover on rate-limit or repeated timeouts, timed-out retest round, and DSH platform fallback",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "type": "module",
   "main": "lib/index.js",
   "license": "MIT",
